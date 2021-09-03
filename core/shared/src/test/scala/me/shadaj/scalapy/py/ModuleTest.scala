@@ -2,12 +2,6 @@ package me.shadaj.scalapy.py
 
 import org.scalatest.funsuite.AnyFunSuite
 
-@native class StringModuleFacade extends Module {
-  def digits: String = native
-}
-
-@native object StringModuleStaticFacade extends StringModuleFacade with StaticModule("string")
-
 class ModuleTest extends AnyFunSuite {
   test("Can read value from module") {
     local {
