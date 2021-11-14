@@ -5,7 +5,7 @@ import scala.quoted.*
 class Dynamic
 
 object ScalaPyDefinedImpl {
-  def register(t: Expr[Any], bases: Expr[Seq[Dynamic]])(using Quotes): Expr[Dynamic] = {
+  def register[T: Type](t: Expr[T], bases: Expr[Seq[Dynamic]])(using Quotes): Expr[Dynamic] = {
     import quotes.reflect.*
 
     def searchImplicit(using Quotes)(typeReprParameter: quotes.reflect.TypeRepr): quotes.reflect.Term = {
@@ -22,9 +22,8 @@ object ScalaPyDefinedImpl {
     }
 
     def constructASTforMethodFrom(arg: quotes.reflect.Term) = {
-      val argumentType = arg.tpe.typeSymbol
-      val applyArgTypeToWriter = Helper.writerTypeRepr.appliedTo(TypeIdent(argumentType).tpe)
-      val tree = Apply(Apply(TypeApply(Ref(Helper.methodFromSymbol),List(TypeIdent(argumentType))),List(arg)),
+      val applyArgTypeToWriter = Helper.writerTypeRepr.appliedTo(arg.tpe.widen)
+      val tree = Apply(Apply(TypeApply(Ref(Helper.methodFromSymbol),List(Inferred(arg.tpe.widen))),List(arg)),
       List(searchImplicit(applyArgTypeToWriter)))
       tree
     }
@@ -50,8 +49,9 @@ object ScalaPyDefinedImpl {
     val ndarray = Apply(Select.unique(np, "selectDynamic"), List(Literal(StringConstant("ndarray"))))
     println(ndarray.show)
     // name of the new class
-    val name = Literal(StringConstant(Symbol.spliceOwner.owner.owner.name))
-    println(Symbol.spliceOwner.owner.owner.name.getClass)
+    val name = Literal(StringConstant(TypeTree.of[T].tpe.typeSymbol.name))
+
+    println("CLASS NAME: " + TypeTree.of[T].tpe.typeSymbol.name)
 
     // bases classes of the new class
     // Dynamic.global.tuple(Seq(Dynamic.global.`object`).toPythonProxy)
@@ -69,8 +69,36 @@ object ScalaPyDefinedImpl {
     // execution body of the new class
     val clsexecfunSym = Symbol.newMethod(Symbol.spliceOwner, "clsexec", 
       MethodType(List("ns"))(_ => List(dynamicClass.tpe), _ => anyClass.tpe))
+
+    val methodName = Symbol.spliceOwner.owner.owner.declaredMethods(0).name
+
+    val selectMethod = Select.unique(t.asTerm, methodName)
+
+    // List(Literal(StringConstant("size")), Literal(IntConstant(3)))
+
     val clsexecfun = DefDef(clsexecfunSym, 
-      { case List(List(ns @ Ident(_))) => Some(Block(List(Apply(Select.unique(ns,"bracketUpdate"),List(Literal(StringConstant("size")), Literal(IntConstant(3))).map(constructASTforMethodFrom))), scalaPyNone)) })
+      {
+        case List(List(ns @ Ident(_))) => {
+          val listOfMethods = Symbol.spliceOwner.owner.owner.declaredMethods.flatMap(method =>{
+            
+            /* * * * * * * * * *  
+              first try to implement getting paramters and using in bracketUpdate  
+              * * * * * * * * *  
+            */
+
+            // val termParameterSymbols = method.paramSymss.filterNot(_.headOption.exists(_.isType))
+            // val parametersAsSymbols = termParameterSymbols.map(_.map(Ref.apply))
+
+            // if parametersAsSymbols.length > 1 then
+            //   report.throwError(s"method $methodName has curried parameter lists.")
+
+            // val args = parametersAsSymbols.headOption.toList.flatten
+
+            List(Apply(Select.unique(ns,"bracketUpdate"), List(Expr(method.name).asTerm, Select.unique(t.asTerm, method.name)).map(constructASTforMethodFrom)))
+          }) 
+          Some(Block(listOfMethods, scalaPyNone))
+        }  
+      })
     
     val clsexecScala = Block(List(clsexecfun),Closure(Ref(clsexecfunSym), None))
     val clsexec = Apply(Apply(TypeApply(Ref(Helper.methodFromSymbol),List(Inferred(clsexecScala.tpe))),List(clsexecScala)), List(searchImplicit(Helper.writerTypeRepr.appliedTo(clsexecScala.tpe))))

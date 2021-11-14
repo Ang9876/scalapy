@@ -21,6 +21,7 @@ class MyArray extends NdArray {
 
 class ScalaA extends Any {
   def size: Int = 2
+  def getInteger: Int = 3
   registerScalaPyDefined(this)
 }
 
@@ -42,7 +43,9 @@ class ScalaPyDefinedTest extends AnyFunSuite {
       val scalaa = new ScalaA
       scalaa.initRawValue()
       println(scalaa.size)
-      println(scalaa.as[Dynamic].size)
+      
+      assert(scalaa.as[Dynamic].size.as[Int] == 2)
+      assert(scalaa.as[Dynamic].getInteger.as[Int] == 3)      
 
       // variable is a problem
     }
